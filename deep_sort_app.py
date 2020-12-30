@@ -49,6 +49,7 @@ def gather_sequence_info(sequence_dir, detection_file):
     detections = None
     if detection_file is not None:
         detections = np.load(detection_file)
+
     groundtruth = None
     if os.path.exists(groundtruth_file):
         groundtruth = np.loadtxt(groundtruth_file, delimiter=',')
@@ -142,7 +143,7 @@ def run(sequence_dir, detection_file, output_file, min_confidence,
         results on completion.
     min_confidence : float
         Detection confidence threshold. Disregard all detections that have
-        a confidence lower than this value.
+        a confidence lower than this value.tr
     nms_max_overlap: float
         Maximum detection overlap (non-maxima suppression threshold).
     min_detection_height : int
@@ -167,15 +168,13 @@ def run(sequence_dir, detection_file, output_file, min_confidence,
         print("Processing frame %05d" % frame_idx)
 
         # Load image and generate detections.
-        detections = create_detections(
-            seq_info["detections"], frame_idx, min_detection_height)
+        detections = create_detections(seq_info["detections"], frame_idx, min_detection_height)
         detections = [d for d in detections if d.confidence >= min_confidence]
 
         # Run non-maxima suppression.
         boxes = np.array([d.tlwh for d in detections])
         scores = np.array([d.confidence for d in detections])
-        indices = preprocessing.non_max_suppression(
-            boxes, nms_max_overlap, scores)
+        indices = preprocessing.non_max_suppression(boxes, nms_max_overlap, scores)
         detections = [detections[i] for i in indices]
 
         # Update tracker.

@@ -26,10 +26,11 @@ class Detection(object):
 
     """
 
-    def __init__(self, tlwh, confidence, feature):
+    def __init__(self, tlwh, confidence, feature, waymo_id=None):
         self.tlwh = np.asarray(tlwh, dtype=np.float)
         self.confidence = float(confidence)
         self.feature = np.asarray(feature, dtype=np.float32)
+        self.waymo_id = waymo_id
 
     def to_tlbr(self):
         """Convert bounding box to format `(min x, min y, max x, max y)`, i.e.,
@@ -46,4 +47,12 @@ class Detection(object):
         ret = self.tlwh.copy()
         ret[:2] += ret[2:] / 2
         ret[2] /= ret[3]
+        return ret
+
+    def to_xywh(self):
+        '''
+        Output the detection in (cx, cy, w, h) format.
+        '''
+        ret = self.tlwh.copy()
+        ret[:2] += ret[2:] / 2
         return ret

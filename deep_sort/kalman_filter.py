@@ -26,13 +26,15 @@ class KalmanFilter(object):
 
     The 8-dimensional state space
 
-        x, y, a, h, vx, vy, va, vh
+        x, y, w, h, vx, vy, vw, vh
 
-    contains the bounding box center position (x, y), aspect ratio a, height h,
+    contains the bounding box center position (x, y), width w, height h,
     and their respective velocities.
 
+    The KalmanFilter class is not specific to any object, but general regression model.
+
     Object motion follows a constant velocity model. The bounding box location
-    (x, y, a, h) is taken as direct observation of the state space (linear
+    (x, y, w, h) is taken as direct observation of the state space (linear
     observation model).
 
     """
@@ -40,10 +42,12 @@ class KalmanFilter(object):
     def __init__(self):
         ndim, dt = 4, 1.
 
-        # Create Kalman filter model matrices.
+        # Create Kalman filter model matrices; state transition matrix
         self._motion_mat = np.eye(2 * ndim, 2 * ndim)
         for i in range(ndim):
             self._motion_mat[i, ndim + i] = dt
+
+        # H: [4, 8], project state to measurement; y = Hx
         self._update_mat = np.eye(ndim, 2 * ndim)
 
         # Motion and observation uncertainty are chosen relative to the current
@@ -58,8 +62,8 @@ class KalmanFilter(object):
         Parameters
         ----------
         measurement : ndarray
-            Bounding box coordinates (x, y, a, h) with center position (x, y),
-            aspect ratio a, and height h.
+            Bounding box coordinates (x, y, w, h) with center position (x, y),
+            width w, and height h.
 
         Returns
         -------
@@ -69,24 +73,26 @@ class KalmanFilter(object):
             to 0 mean.
 
         """
+        # create measurement and initiate the velocity with 0-vector
         mean_pos = measurement
         mean_vel = np.zeros_like(mean_pos)
         mean = np.r_[mean_pos, mean_vel]
 
+        # measurement[3]: height h
         std = [
             2 * self._std_weight_position * measurement[3],
             2 * self._std_weight_position * measurement[3],
-            1e-2,
+            2 * self._std_weight_position * measurement[3],
             2 * self._std_weight_position * measurement[3],
             10 * self._std_weight_velocity * measurement[3],
             10 * self._std_weight_velocity * measurement[3],
-            1e-5,
+            10 * self._std_weight_velocity * measurement[3],
             10 * self._std_weight_velocity * measurement[3]]
         covariance = np.diag(np.square(std))
         return mean, covariance
 
     def predict(self, mean, covariance):
-        """Run Kalman filter prediction step.
+        """Run Kalman filter prediction step. From previous state to predict next state.
 
         Parameters
         ----------
@@ -104,19 +110,25 @@ class KalmanFilter(object):
             state. Unobserved velocities are initialized to 0 mean.
 
         """
+        # compared to initialization, there is no constant factor
         std_pos = [
             self._std_weight_position * mean[3],
             self._std_weight_position * mean[3],
-            1e-2,
+            self._std_weight_position * mean[3],
             self._std_weight_position * mean[3]]
         std_vel = [
             self._std_weight_velocity * mean[3],
             self._std_weight_velocity * mean[3],
-            1e-5,
+            self._std_weight_velocity * mean[3],
             self._std_weight_velocity * mean[3]]
+
+        # Q: the process covariance matrix
         motion_cov = np.diag(np.square(np.r_[std_pos, std_vel]))
 
+        # x' = Fx
         mean = np.dot(self._motion_mat, mean)
+
+        # P' = FPF^T + Q, Q is the process covariance matrix
         covariance = np.linalg.multi_dot((
             self._motion_mat, covariance, self._motion_mat.T)) + motion_cov
 
@@ -142,27 +154,33 @@ class KalmanFilter(object):
         std = [
             self._std_weight_position * mean[3],
             self._std_weight_position * mean[3],
-            1e-1,
+            self._std_weight_position * mean[3],
             self._std_weight_position * mean[3]]
+
+        # measurement covariance R
         innovation_cov = np.diag(np.square(std))
 
+        # project state to measurement, y' = Hx'
         mean = np.dot(self._update_mat, mean)
-        covariance = np.linalg.multi_dot((
-            self._update_mat, covariance, self._update_mat.T))
+
+        # project state covariance to measurement covariance, and add an measurement covariance
+        # S = HP'H^T + R
+        covariance = np.linalg.multi_dot((self._update_mat, covariance, self._update_mat.T))
+
         return mean, covariance + innovation_cov
 
     def update(self, mean, covariance, measurement):
-        """Run Kalman filter correction step.
+        """Run Kalman filter correction step using the predicted state and the new measurement.
 
         Parameters
         ----------
-        mean : ndarray
+        mean : ndarray, x'
             The predicted state's mean vector (8 dimensional).
-        covariance : ndarray
+        covariance : ndarray, P'
             The state's covariance matrix (8x8 dimensional).
         measurement : ndarray
-            The 4 dimensional measurement vector (x, y, a, h), where (x, y)
-            is the center position, a the aspect ratio, and h the height of the
+            The 4 dimensional measurement vector (x, y, w, h), where (x, y)
+            is the center position, w the width of the bbox, and h the height of the
             bounding box.
 
         Returns
@@ -171,22 +189,35 @@ class KalmanFilter(object):
             Returns the measurement-corrected state distribution.
 
         """
+        # get projected mean and covariance of the measurement
+        # projected_mean: Hx'
+        # projected_cov: S = HP'H^T + R
         projected_mean, projected_cov = self.project(mean, covariance)
 
-        chol_factor, lower = scipy.linalg.cho_factor(
-            projected_cov, lower=True, check_finite=False)
+        # compute chol_factor of S
+        chol_factor, lower = scipy.linalg.cho_factor(projected_cov, lower=True, check_finite=False)
+
+        # cho_solve: Solve the linear equations A x = b, given the Cholesky factorization of A.
+        # first param: Cholesky factorization of a, as given by cho_factor
+        # second param: right-hand side
+        # equation: S K^T = (P' H^T)^T --> K^T = S^(-1) (P' H^T)^T --> K = P' H^T (S^(-1))^T
         kalman_gain = scipy.linalg.cho_solve(
             (chol_factor, lower), np.dot(covariance, self._update_mat.T).T,
             check_finite=False).T
+        
+        # y = z - Hx'
         innovation = measurement - projected_mean
 
+        # x = x' + yK^T
         new_mean = mean + np.dot(innovation, kalman_gain.T)
+
+        # P = P' - K S K^T = P' - K (P' H^T)^T = P' - K H (P')^T
         new_covariance = covariance - np.linalg.multi_dot((
             kalman_gain, projected_cov, kalman_gain.T))
+
         return new_mean, new_covariance
 
-    def gating_distance(self, mean, covariance, measurements,
-                        only_position=False):
+    def gating_distance(self, mean, covariance, measurements, only_position=False):
         """Compute gating distance between state distribution and measurements.
 
         A suitable distance threshold can be obtained from `chi2inv95`. If
@@ -201,8 +232,8 @@ class KalmanFilter(object):
             Covariance of the state distribution (8x8 dimensional).
         measurements : ndarray
             An Nx4 dimensional matrix of N measurements, each in
-            format (x, y, a, h) where (x, y) is the bounding box center
-            position, a the aspect ratio, and h the height.
+            format (x, y, w, h) where (x, y) is the bounding box center
+            position, w the width, and h the height.
         only_position : Optional[bool]
             If True, distance computation is done with respect to the bounding
             box center position only.
@@ -215,6 +246,7 @@ class KalmanFilter(object):
             `measurements[i]`.
 
         """
+        # get the projected mean and variance of state
         mean, covariance = self.project(mean, covariance)
         if only_position:
             mean, covariance = mean[:2], covariance[:2, :2]

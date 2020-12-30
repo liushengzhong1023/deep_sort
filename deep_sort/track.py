@@ -18,9 +18,11 @@ class TrackState:
 
 class Track:
     """
-    A single target track with state space `(x, y, a, h)` and associated
-    velocities, where `(x, y)` is the center of the bounding box, `a` is the
-    aspect ratio and `h` is the height.
+    A single target track with state space `(x, y, w, h)` and associated
+    velocities, where `(x, y)` is the center of the bounding box, `w` is the width
+    and `h` is the height.
+
+    The track class is specific to the object to track.
 
     Parameters
     ----------
@@ -64,7 +66,7 @@ class Track:
     """
 
     def __init__(self, mean, covariance, track_id, n_init, max_age,
-                 feature=None):
+                 feature=None, waymo_id=None):
         self.mean = mean
         self.covariance = covariance
         self.track_id = track_id
@@ -76,6 +78,8 @@ class Track:
         self.features = []
         if feature is not None:
             self.features.append(feature)
+
+        self.waymo_id = waymo_id
 
         self._n_init = n_init
         self._max_age = max_age
@@ -91,7 +95,7 @@ class Track:
 
         """
         ret = self.mean[:4].copy()
-        ret[2] *= ret[3]
+        # ret[2] *= ret[3] # now we save the center, and w, h
         ret[:2] -= ret[2:] / 2
         return ret
 
@@ -135,8 +139,8 @@ class Track:
             The associated detection.
 
         """
-        self.mean, self.covariance = kf.update(
-            self.mean, self.covariance, detection.to_xyah())
+        # self.mean, self.covariance = kf.update(self.mean, self.covariance, detection.to_xyah())
+        self.mean, self.covariance = kf.update(self.mean, self.covariance, detection.to_xywh())
         self.features.append(detection.feature)
 
         self.hits += 1
@@ -149,6 +153,7 @@ class Track:
         """
         if self.state == TrackState.Tentative:
             self.state = TrackState.Deleted
+
         elif self.time_since_update > self._max_age:
             self.state = TrackState.Deleted
 

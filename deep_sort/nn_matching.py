@@ -135,7 +135,7 @@ class NearestNeighborDistanceMetric(object):
         self.samples = {}
 
     def partial_fit(self, features, targets, active_targets):
-        """Update the distance metric with new data.
+        """Update the saved track features with new data.
 
         Parameters
         ----------
@@ -149,12 +149,16 @@ class NearestNeighborDistanceMetric(object):
         """
         for feature, target in zip(features, targets):
             self.samples.setdefault(target, []).append(feature)
+
+            # save at most self.budget history features for each track
             if self.budget is not None:
                 self.samples[target] = self.samples[target][-self.budget:]
+
+        # only save past features for active track ids
         self.samples = {k: self.samples[k] for k in active_targets}
 
     def distance(self, features, targets):
-        """Compute distance between features and targets.
+        """Compute distance between features and targets. The target features are retrieved from buffer.
 
         Parameters
         ----------
