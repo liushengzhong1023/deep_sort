@@ -8,9 +8,7 @@ from . import kalman_filter
 INFTY_COST = 1e+5
 
 
-def min_cost_matching(
-        distance_metric, max_distance, tracks, detections, track_indices=None,
-        detection_indices=None):
+def min_cost_matching(distance_metric, max_distance, tracks, detections, track_indices=None, detection_indices=None):
     """Solve linear assignment problem.
 
     Parameters
@@ -54,7 +52,8 @@ def min_cost_matching(
 
     cost_matrix = distance_metric(tracks, detections, track_indices, detection_indices)
     cost_matrix[cost_matrix > max_distance] = max_distance + 1e-5
-    indices = linear_assignment(cost_matrix)
+    row_indices, col_indices = linear_assignment(cost_matrix)
+    indices = np.vstack([row_indices, col_indices]).T
 
     matches, unmatched_tracks, unmatched_detections = [], [], []
     for col, detection_idx in enumerate(detection_indices):

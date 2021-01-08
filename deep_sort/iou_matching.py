@@ -39,8 +39,7 @@ def iou(bbox, candidates):
     return area_intersection / (area_bbox + area_candidates - area_intersection)
 
 
-def iou_cost(tracks, detections, track_indices=None,
-             detection_indices=None):
+def iou_cost(tracks, detections, track_indices=None, detection_indices=None):
     """An intersection over union distance metric.
 
     Parameters
@@ -50,11 +49,9 @@ def iou_cost(tracks, detections, track_indices=None,
     detections : List[deep_sort.detection.Detection]
         A list of detections.
     track_indices : Optional[List[int]]
-        A list of indices to tracks that should be matched. Defaults to
-        all `tracks`.
+        A list of indices to tracks that should be matched. Defaults to all `tracks`.
     detection_indices : Optional[List[int]]
-        A list of indices to detections that should be matched. Defaults
-        to all `detections`.
+        A list of indices to detections that should be matched. Defaults to all `detections`.
 
     Returns
     -------
