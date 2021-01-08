@@ -221,7 +221,7 @@ class Tracker:
         if len(self.tracks) == 0:
             matches = []
             unmatched_tracks = []
-            unmatched_detections = detections
+            unmatched_detections = list(range(len(detections)))
         else:
             matches, unmatched_tracks, unmatched_detections = linear_assignment.min_cost_matching(
                 iou_matching.iou_cost, self.max_iou_distance, self.tracks, detections)
