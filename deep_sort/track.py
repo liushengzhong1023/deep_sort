@@ -1,5 +1,7 @@
 # vim: expandtab:ts=4:sw=4
 
+import numpy as np
+
 
 class TrackState:
     """
@@ -169,3 +171,57 @@ class Track:
     def is_deleted(self):
         """Returns True if this track is dead and should be deleted."""
         return self.state == TrackState.Deleted
+
+    # ----------------------- By Shengzhong Liu -------------------------
+
+    def project_next_data_region(self):
+        '''
+        Use projected state to generate a data region for next appearance.
+        Goal: we want to cover the next appearance of the object.
+        We utilize both mean, velocity, and covariance information.
+        '''
+        cw, ch, w, h = self.mean[0:4]
+        v_cw, v_ch, v_w, v_h = self.mean[4:8]
+        std_cw, std_ch, std_vw, std_vh = np.sqrt(np.diagonal(self.covariance)[0:4])
+
+        # enter from left
+        if v_cw > 5 and v_w > 5 and v_ch < 5:
+            cw += v_cw
+
+        # enter from right
+        if v_cw < -5 and v_w > 5 and v_ch < 5:
+            cw -= abs(v_cw)
+
+        # move down
+        if v_ch > 10:
+            ch += v_ch
+            cw -= 1.3 * abs(v_cw)
+
+        # decide corner positions
+        min_width = cw - 0.5 * w
+        min_height = ch - 0.5 * h
+        max_width = cw + 0.5 * w
+        max_height = ch + 0.5 * h
+
+        if v_ch > 3:  # enlarge the box when moving down
+            max_height += max(0.4 * h, 3 * std_vh)
+            min_width -= max(0.4 * w, 3 * std_vw)
+        elif v_cw > 5 and v_w > 5 and v_h < 3:  # enlarge the box when moving right
+            max_width += max(0.3 * w, 3 * std_vw)
+            min_width -= 0.1 * w
+        elif v_cw < -5 and v_w > 5 and v_h < 3:  # enlarge the box when moving left
+            min_width -= max(0.3 * w, 3 * std_vw)
+            max_width = min(1920, max_width)
+        else:
+            max_width += 0.1 * w
+            min_width -= 0.1 * w
+            max_height += 0.1 * h
+            min_height -= 0.1 * h
+
+        # plot the bbox
+        min_width = max(0, min_width)
+        min_height = max(0, min_height)
+        max_width = min(1920, max_width)
+        max_height = min(1280, max_height)
+
+        return min_width, min_height, max_width, max_height
