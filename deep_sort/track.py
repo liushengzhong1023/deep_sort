@@ -197,7 +197,7 @@ class Track:
 
         # one appearance, no object velocity information available
         if self.hits == 1 and args.scheduler != 'merged':
-            w = max(1.3 * w, 64)
+            w = max(1.3 * w, 128)
             h = max(1.3 * h, 64)
 
             # decide corner positions
@@ -219,6 +219,10 @@ class Track:
             if v_ch > 10:
                 ch += v_ch
                 cw -= 1.3 * abs(v_cw)
+
+            # limit on box size
+            w = max(w, 128)
+            h = max(w, 64)
 
             # decide corner positions
             min_width = cw - 0.5 * w
