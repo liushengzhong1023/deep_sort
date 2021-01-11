@@ -173,55 +173,85 @@ class Track:
         return self.state == TrackState.Deleted
 
     # ----------------------- By Shengzhong Liu -------------------------
+    def mark_deleted(self):
+        '''Mark this track as dead when negative mean value appears'''
+        self.state = TrackState.Deleted
 
-    def project_next_data_region(self):
+    def project_next_data_region(self, args):
         '''
         Use projected state to generate a data region for next appearance.
         Goal: we want to cover the next appearance of the object.
         We utilize both mean, velocity, and covariance information.
+        We guarantee that each box is a valid box on the full image.
+        TODO: The moving speed is 0 after identifying only one appearance; so the predicted box position is same as previous appearance.
         '''
         cw, ch, w, h = self.mean[0:4]
         v_cw, v_ch, v_w, v_h = self.mean[4:8]
         std_cw, std_ch, std_vw, std_vh = np.sqrt(np.diagonal(self.covariance)[0:4])
 
-        # enter from left
-        if v_cw > 5 and v_w > 5 and v_ch < 5:
-            cw += v_cw
+        # filter out unqualified boxes
+        flag = cw > 0 and ch > 0 and w > 0 and h > 0
+        if not flag:
+            self.mark_deleted()
+            return [0, 0, 0, 0]
 
-        # enter from right
-        if v_cw < -5 and v_w > 5 and v_ch < 5:
-            cw -= abs(v_cw)
+        # one appearance, no object velocity information available
+        if self.hits == 1 and args.scheduler != 'merged':
+            w = max(1.3 * w, 64)
+            h = max(1.3 * h, 64)
 
-        # move down
-        if v_ch > 10:
-            ch += v_ch
-            cw -= 1.3 * abs(v_cw)
-
-        # decide corner positions
-        min_width = cw - 0.5 * w
-        min_height = ch - 0.5 * h
-        max_width = cw + 0.5 * w
-        max_height = ch + 0.5 * h
-
-        if v_ch > 3:  # enlarge the box when moving down
-            max_height += max(0.4 * h, 3 * std_vh)
-            min_width -= max(0.4 * w, 3 * std_vw)
-        elif v_cw > 5 and v_w > 5 and v_h < 3:  # enlarge the box when moving right
-            max_width += max(0.3 * w, 3 * std_vw)
-            min_width -= 0.1 * w
-        elif v_cw < -5 and v_w > 5 and v_h < 3:  # enlarge the box when moving left
-            min_width -= max(0.3 * w, 3 * std_vw)
-            max_width = min(1920, max_width)
+            # decide corner positions
+            min_width = cw - 0.5 * w
+            min_height = ch - 0.5 * h
+            max_width = cw + 0.5 * w
+            max_height = ch + 0.5 * h
         else:
-            max_width += 0.1 * w
-            min_width -= 0.1 * w
-            max_height += 0.1 * h
-            min_height -= 0.1 * h
+            # shift the center position when the moving speed is fast
+            # enter from left
+            if v_cw > 5 and v_w > 5 and v_ch < 5:
+                cw += v_cw
 
-        # plot the bbox
-        min_width = max(0, min_width)
-        min_height = max(0, min_height)
-        max_width = min(1920, max_width)
-        max_height = min(1280, max_height)
+            # enter from right
+            if v_cw < -5 and v_w > 5 and v_ch < 5:
+                cw -= abs(v_cw)
+
+            # move down
+            if v_ch > 10:
+                ch += v_ch
+                cw -= 1.3 * abs(v_cw)
+
+            # decide corner positions
+            min_width = cw - 0.5 * w
+            min_height = ch - 0.5 * h
+            max_width = cw + 0.5 * w
+            max_height = ch + 0.5 * h
+
+            if v_ch > 3:  # enlarge the box when moving down
+                max_height += max(0.4 * h, 3 * std_vh)
+                min_width -= max(0.4 * w, 3 * std_vw)
+            elif v_cw > 5 and v_w > 5 and v_h < 3:  # enlarge the box when moving right
+                max_width += max(0.3 * w, 3 * std_vw)
+                min_width -= 0.1 * w
+            elif v_cw < -5 and v_w > 5 and v_h < 3:  # enlarge the box when moving left
+                min_width -= max(0.3 * w, 3 * std_vw)
+                max_width = min(1920, max_width)
+            else:
+                max_width += 0.1 * w
+                min_width -= 0.1 * w
+                max_height += 0.1 * h
+                min_height -= 0.1 * h
+
+        # limit the box coordinates
+        if args.dataset == 'waymo':
+            limit_w = 1920
+            limit_h = 1280
+        else:
+            limit_w = 1248
+            limit_h = 384
+
+        min_width = max(min_width, 0)
+        min_height = max(min_height, 0)
+        max_width = min(max_width, limit_w)
+        max_height = min(max_height, limit_h)
 
         return min_width, min_height, max_width, max_height
