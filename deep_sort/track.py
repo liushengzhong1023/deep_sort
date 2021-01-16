@@ -221,7 +221,7 @@ class Track:
                 cw -= 1.3 * abs(v_cw)
 
             # limit on box size
-            w = max(w, 128)
+            w = max(w, 96)
             h = max(w, 64)
 
             # decide corner positions
