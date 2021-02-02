@@ -7,6 +7,8 @@ from . import iou_matching
 from .track import Track
 from .detection import Detection
 
+from utils.phash_utils import *
+
 
 class Tracker:
     """
@@ -109,8 +111,8 @@ class Tracker:
         # mean, covariance = self.kf.initiate(detection.to_xyah())
         mean, covariance = self.kf.initiate(detection.to_xywh())
 
-        new_track = Track(mean, covariance, self._next_id, self.n_init, self.max_age, detection.feature,
-                          detection.waymo_id)
+        new_track = Track(mean, covariance, self._next_id, self.n_init, self.max_age,
+                          phash=detection.phash)
 
         self.tracks.append(new_track)
         self._next_id += 1
@@ -201,7 +203,7 @@ class Tracker:
         self.tracks = preserved_tracks
         self.waymo_id_to_track = preserved_waymo_id_to_track
 
-    def update_with_iou(self, detected_bboxes):
+    def update_with_iou(self, detected_bboxes, full_image):
         '''
         Only use the IoU score to update the tracker status, same as SORT.
         No appearance information is used.
@@ -214,7 +216,9 @@ class Tracker:
             w = x_max - x_min
             h = y_max - y_min
             conf = bbox[4]
-            detection = Detection([x_min, y_min, w, h], conf, [])
+            # compute the phash for the partial image
+            phash = compute_phash(full_image[int(y_min):int(y_max), int(x_min):int(x_max), :])
+            detection = Detection([x_min, y_min, w, h], conf, feature=None, phash=phash)
             detections.append(detection)
 
         # match detections with tracks with iou distance only

@@ -1,7 +1,7 @@
 # vim: expandtab:ts=4:sw=4
 
 import numpy as np
-
+from utils.phash_utils import *
 
 class TrackState:
     """
@@ -68,7 +68,7 @@ class Track:
     """
 
     def __init__(self, mean, covariance, track_id, n_init, max_age,
-                 feature=None, waymo_id=None):
+                 feature=None, waymo_id=None, phash=None):
         self.mean = mean
         self.covariance = covariance
         self.track_id = track_id
@@ -85,6 +85,10 @@ class Track:
 
         self._n_init = n_init
         self._max_age = max_age
+
+        # used for image similarity computation
+        self.phash = phash
+        self.phash_distance = 0
 
     def to_tlwh(self):
         """Get current position in bounding box format `(top left x, top left y,
@@ -150,6 +154,9 @@ class Track:
         if self.state == TrackState.Tentative and self.hits >= self._n_init:
             self.state = TrackState.Confirmed
 
+        # update the phash
+        self.phash = detection.phash
+
     def mark_missed(self):
         """Mark this track as missed (no association at the current time step).
         """
@@ -183,7 +190,8 @@ class Track:
         Goal: we want to cover the next appearance of the object.
         We utilize both mean, velocity, and covariance information.
         We guarantee that each box is a valid box on the full image.
-        TODO: The moving speed is 0 after identifying only one appearance; so the predicted box position is same as previous appearance.
+        TODO: The moving speed is 0 after identifying only one appearance;
+              so the predicted box position is same as previous appearance.
         '''
         cw, ch, w, h = self.mean[0:4]
         v_cw, v_ch, v_w, v_h = self.mean[4:8]
@@ -197,14 +205,14 @@ class Track:
 
         # one appearance, no object velocity information available
         if self.hits == 1 and args.scheduler != 'merged':
-            w = max(1.3 * w, 128)
+            w = max(1.3 * w, 96)
             h = max(1.3 * h, 64)
 
             # decide corner positions
-            min_width = cw - 0.5 * w
-            min_height = ch - 0.5 * h
-            max_width = cw + 0.5 * w
-            max_height = ch + 0.5 * h
+            min_w = cw - 0.5 * w
+            min_h = ch - 0.5 * h
+            max_w = cw + 0.5 * w
+            max_h = ch + 0.5 * h
         else:
             # shift the center position when the moving speed is fast
             # enter from left
@@ -225,25 +233,25 @@ class Track:
             h = max(w, 64)
 
             # decide corner positions
-            min_width = cw - 0.5 * w
-            min_height = ch - 0.5 * h
-            max_width = cw + 0.5 * w
-            max_height = ch + 0.5 * h
+            min_w = cw - 0.5 * w
+            min_h = ch - 0.5 * h
+            max_w = cw + 0.5 * w
+            max_h = ch + 0.5 * h
 
             if v_ch > 3:  # enlarge the box when moving down
-                max_height += max(0.4 * h, 3 * std_vh)
-                min_width -= max(0.4 * w, 3 * std_vw)
+                max_h += max(0.4 * h, 3 * std_vh)
+                min_w -= max(0.4 * w, 3 * std_vw)
             elif v_cw > 5 and v_w > 5 and v_h < 3:  # enlarge the box when moving right
-                max_width += max(0.3 * w, 3 * std_vw)
-                min_width -= 0.1 * w
+                max_w += max(0.3 * w, 3 * std_vw)
+                min_w -= 0.1 * w
             elif v_cw < -5 and v_w > 5 and v_h < 3:  # enlarge the box when moving left
-                min_width -= max(0.3 * w, 3 * std_vw)
-                max_width = min(1920, max_width)
+                min_w -= max(0.3 * w, 3 * std_vw)
+                max_w = min(1920, max_w)
             else:
-                max_width += 0.1 * w
-                min_width -= 0.1 * w
-                max_height += 0.1 * h
-                min_height -= 0.1 * h
+                max_w += 0.1 * w
+                min_w -= 0.1 * w
+                max_h += 0.1 * h
+                min_h -= 0.1 * h
 
         # limit the box coordinates
         if args.dataset == 'waymo':
@@ -253,9 +261,12 @@ class Track:
             limit_w = 1248
             limit_h = 384
 
-        min_width = max(min_width, 0)
-        min_height = max(min_height, 0)
-        max_width = min(max_width, limit_w)
-        max_height = min(max_height, limit_h)
+        min_w = int(max(min_w, 0))
+        min_h = int(max(min_h, 0))
+        max_w = int(min(max_w, limit_w))
+        max_h = int(min(max_h, limit_h))
 
-        return min_width, min_height, max_width, max_height
+        # compute the Hamming distance for pHash
+        self.hamming_distance = phash_distance(self.phash, args.preprocessed_image[min_h:max_h, min_w: max_w, :])
+
+        return min_w, min_h, max_w, max_h
