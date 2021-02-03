@@ -157,9 +157,13 @@ class Track:
         # update the phash
         self.phash = detection.phash
 
-    def mark_missed(self):
+    def mark_missed(self, is_key_frame=False):
         """Mark this track as missed (no association at the current time step).
         """
+        # if this is the key frame delete any unmatched frames; reduce false positives in tracks
+        if is_key_frame:
+            self.state = TrackState.Deleted
+
         if self.state == TrackState.Tentative:
             self.state = TrackState.Deleted
 
@@ -267,6 +271,9 @@ class Track:
         max_h = int(min(max_h, limit_h))
 
         # compute the Hamming distance for pHash
-        self.hamming_distance = phash_distance(self.phash, args.preprocessed_image[min_h:max_h, min_w: max_w, :])
+        if max_h - min_h > 32 and max_w - min_w > 32:
+            self.hamming_distance = phash_distance(self.phash, args.preprocessed_image[min_h:max_h, min_w: max_w, :])
+        else:
+            self.hamming_distance = 0
 
         return min_w, min_h, max_w, max_h

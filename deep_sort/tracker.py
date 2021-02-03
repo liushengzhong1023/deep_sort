@@ -203,7 +203,7 @@ class Tracker:
         self.tracks = preserved_tracks
         self.waymo_id_to_track = preserved_waymo_id_to_track
 
-    def update_with_iou(self, detected_bboxes, full_image):
+    def update_with_iou(self, detected_bboxes, full_image, is_key_frame=False):
         '''
         Only use the IoU score to update the tracker status, same as SORT.
         No appearance information is used.
@@ -216,6 +216,7 @@ class Tracker:
             w = x_max - x_min
             h = y_max - y_min
             conf = bbox[4]
+
             # compute the phash for the partial image
             phash = compute_phash(full_image[int(y_min):int(y_max), int(x_min):int(x_max), :])
             detection = Detection([x_min, y_min, w, h], conf, feature=None, phash=phash)
@@ -235,7 +236,7 @@ class Tracker:
             self.tracks[track_idx].update(self.kf, detections[detection_idx])
 
         for track_idx in unmatched_tracks:
-            self.tracks[track_idx].mark_missed()
+            self.tracks[track_idx].mark_missed(is_key_frame=is_key_frame)
 
         for detection_idx in unmatched_detections:
             self._initiate_track(detections[detection_idx])
