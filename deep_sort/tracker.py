@@ -116,7 +116,7 @@ class Tracker:
         mean, covariance = self.kf.initiate(detection.to_xywh())
 
         new_track = Track(mean, covariance, self._next_id, self.n_init, self.max_age,
-                          phash=detection.phash)
+                          phash=detection.phash, obj_class=detection.obj_class)
 
         self.tracks.append(new_track)
         self._next_id += 1
@@ -223,7 +223,7 @@ class Tracker:
 
             # compute the phash for the partial image
             phash = compute_phash(full_image[int(y_min):int(y_max), int(x_min):int(x_max), :])
-            detection = Detection([x_min, y_min, w, h], conf, feature=None, phash=phash)
+            detection = Detection([x_min, y_min, w, h], conf, feature=None, phash=phash, obj_class=bbox[5])
             detections.append(detection)
 
         # match detections with tracks with iou distance only

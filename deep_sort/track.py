@@ -69,7 +69,7 @@ class Track:
     """
 
     def __init__(self, mean, covariance, track_id, n_init, max_age,
-                 feature=None, waymo_id=None, phash=None):
+                 feature=None, waymo_id=None, phash=None, obj_class=None):
         self.mean = mean
         self.covariance = covariance
         self.track_id = track_id
@@ -90,6 +90,9 @@ class Track:
         # used for image similarity computation
         self.phash = phash
         self.phash_distance = 0
+
+        # object class
+        self.obj_class = obj_class
 
     def to_tlwh(self):
         """Get current position in bounding box format `(top left x, top left y,
@@ -301,10 +304,12 @@ class Track:
             limit_h = 384
 
         # print logs
-        print(self.track_id)
-        print('Mean cw, ch, w, h:', cw, ch, w, h)
-        print('Velocity cw, ch, w, h', v_cw, v_ch, v_w, v_h)
-        print()
+        if args.segment is not None:
+            print(self.track_id)
+            print('Mean cw, ch, w, h:', cw, ch, w, h)
+            print('Velocity cw, ch, w, h', v_cw, v_ch, v_w, v_h)
+            print('Mean std: ', std_cw, std_ch, std_vw, std_vh)
+            print()
 
         # filter out unqualified boxes
         flag = cw > 0 and ch > 0 and w > 0 and h > 0
@@ -312,50 +317,21 @@ class Track:
             self.mark_deleted()
             return [0, 0, 0, 0]
 
-        # one appearance, no object velocity information available; we can use optical flow to assist this situation
-        if self.hits == 1 and args.scheduler != 'merged':
-            # decide corner positions
-            min_w = cw - 0.7 * w
+        # process "small" human objects
+        if (args.dataset == 'waymo' and self.obj_class == 2) or (args.dataset == 'kitti' and self.obj_class == 3):
+            w = max(h * 1.5, 64)
+            min_w = cw - 0.6 * w
             min_h = ch - 0.6 * h
-            max_w = cw + 0.7 * w
+            max_w = cw + 0.6 * w
             max_h = ch + 0.6 * h
-
-            if min_w < 160:
-                min_w = 0
-
-            if max_h > limit_h - 160:
-                max_h = limit_h
-        else:
-            # enter from left
-            if v_cw > 5 and v_ch < 5 and v_w > 5 and cw + w < limit_w / 3:
-                cw += 2 * v_cw
-                min_w = cw - 0.6 * w
-                max_w = cw + 0.6 * (w + v_w)
+        else:  # vehicle
+            # one appearance, no object velocity information available; we can use optical flow to assist this situation
+            if self.hits == 1 and args.scheduler != 'merged':
+                # decide corner positions
+                min_w = cw - 0.7 * w
                 min_h = ch - 0.6 * h
+                max_w = cw + 0.7 * w
                 max_h = ch + 0.6 * h
-            # enter from right;
-            elif v_cw < -5 and v_ch < 5 and v_w > 5:
-                if cw - w > 2 * limit_w / 3:  # enter from right
-                    cw += 2 * v_cw
-                    max_w = cw + 0.5 * w
-                    min_w = cw - 0.6 * (w + v_w)
-                    min_h = ch - 0.6 * h
-                    max_h = ch + 0.6 * h
-                else:  # turn left at right hand side
-                    cw += v_cw
-                    max_w = cw + 0.6 * w
-                    min_w = cw - 0.6 * (w + 2 * abs(v_cw))
-                    min_h = ch - 0.6 * h
-                    max_h = ch + 0.6 * (h + v_h)
-
-            # driving from the opposite
-            elif v_cw < -10 and v_ch > 5:
-                cw += 2.5 * v_cw
-                ch += 2 * v_ch
-                min_w = cw - 0.6 * (w + 2 * abs(v_cw))
-                max_w = cw + 0.6 * (w + 2 * abs(v_cw))
-                min_h = ch - 0.6 * (h + 2 * v_h)
-                max_h = ch + 0.6 * (h + 2 * v_h)
 
                 if min_w < 160:
                     min_w = 0
@@ -363,11 +339,47 @@ class Track:
                 if max_h > limit_h - 160:
                     max_h = limit_h
             else:
-                # decide corner positions
-                min_w = cw - 0.6 * w
-                min_h = ch - 0.6 * h
-                max_w = cw + 0.6 * w
-                max_h = ch + 0.6 * h
+                # enter from left
+                if v_cw > 5 and v_ch < 5 and v_w > 5 and cw + w < limit_w / 3:
+                    cw += 2 * v_cw
+                    min_w = cw - 0.6 * w
+                    max_w = cw + 0.6 * (w + v_w)
+                    min_h = ch - 0.6 * h
+                    max_h = ch + 0.6 * h
+                # enter from right;
+                elif v_cw < -5 and v_ch < 5 and v_w > 5:
+                    if cw - w > 2 * limit_w / 3:  # enter from right
+                        cw += 2 * v_cw
+                        max_w = cw + 0.5 * w
+                        min_w = cw - 0.6 * (w + v_w)
+                        min_h = ch - 0.6 * h
+                        max_h = ch + 0.6 * h
+                    else:  # turn left at right hand side
+                        cw += v_cw
+                        max_w = cw + 0.6 * w
+                        min_w = cw - 0.6 * (w + 2 * abs(v_cw))
+                        min_h = ch - 0.6 * h
+                        max_h = ch + 0.6 * (h + v_h)
+                # driving from the opposite and close to you
+                elif v_cw < -10 and v_ch > 5:
+                    cw += 2.5 * v_cw
+                    ch += 2 * v_ch
+                    min_w = cw - 0.6 * (w + 2 * abs(v_cw))
+                    max_w = cw + 0.6 * (w + 2 * abs(v_cw))
+                    min_h = ch - 0.6 * (h + 2 * v_h)
+                    max_h = ch + 0.6 * (h + 2 * v_h)
+
+                    if min_w < 160:
+                        min_w = 0
+
+                    if max_h > limit_h - 160:
+                        max_h = limit_h
+                else:
+                    # decide corner positions
+                    min_w = cw - 0.6 * w
+                    min_h = ch - 0.6 * h
+                    max_w = cw + 0.6 * w
+                    max_h = ch + 0.6 * h
 
         min_w = int(max(min_w, 0))
         min_h = int(max(min_h, 0))
