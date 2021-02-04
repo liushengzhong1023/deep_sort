@@ -282,7 +282,7 @@ class Track:
 
         return min_w, min_h, max_w, max_h
 
-    def project_next_data_region_v2(self, args):
+    def project_next_data_region_v2(self, args, turn_flag=None):
         '''
         Use projected state to generate a data region for next appearance.
         Goal: we want to cover the next appearance of the object.
@@ -305,10 +305,10 @@ class Track:
 
         # print logs
         if args.segment is not None:
-            print(self.track_id)
+            print(self.track_id, self.obj_class)
             print('Mean cw, ch, w, h:', cw, ch, w, h)
             print('Velocity cw, ch, w, h', v_cw, v_ch, v_w, v_h)
-            print('Mean std: ', std_cw, std_ch, std_vw, std_vh)
+            # print('Mean std: ', std_cw, std_ch, std_vw, std_vh)
             print()
 
         # filter out unqualified boxes
@@ -319,13 +319,17 @@ class Track:
 
         # process "small" human objects
         if (args.dataset == 'waymo' and self.obj_class == 2) or (args.dataset == 'kitti' and self.obj_class == 3):
-            w = max(h * 1.5, 64)
+            w = max(w, h, 64)
             min_w = cw - 0.6 * w
             min_h = ch - 0.6 * h
             max_w = cw + 0.6 * w
             max_h = ch + 0.6 * h
         else:  # vehicle
-            # one appearance, no object velocity information available; we can use optical flow to assist this situation
+            # avoid too flat bbox
+            if h < w / 2:
+                h = w/2
+
+            # one appearance, no object velocity information available
             if self.hits == 1 and args.scheduler != 'merged':
                 # decide corner positions
                 min_w = cw - 0.7 * w
@@ -339,15 +343,15 @@ class Track:
                 if max_h > limit_h - 160:
                     max_h = limit_h
             else:
-                # enter from left
-                if v_cw > 5 and v_ch < 5 and v_w > 5 and cw + w < limit_w / 3:
+                # enter from left, under no turn
+                if v_cw > 5 and v_ch < 5 and v_w > 5 and cw + w < limit_w / 3 and turn_flag is None:
                     cw += 2 * v_cw
                     min_w = cw - 0.6 * w
                     max_w = cw + 0.6 * (w + v_w)
                     min_h = ch - 0.6 * h
                     max_h = ch + 0.6 * h
-                # enter from right;
-                elif v_cw < -5 and v_ch < 5 and v_w > 5:
+                # enter from right, under no turn
+                elif v_cw < -5 and v_ch < 5 and v_w > 5 and turn_flag is None:
                     if cw - w > 2 * limit_w / 3:  # enter from right
                         cw += 2 * v_cw
                         max_w = cw + 0.5 * w
@@ -361,9 +365,10 @@ class Track:
                         min_h = ch - 0.6 * h
                         max_h = ch + 0.6 * (h + v_h)
                 # driving from the opposite and close to you
-                elif v_cw < -10 and v_ch > 5:
+                elif v_cw < -10 and v_ch > 5 and cw < limit_w / 2:
+                    # print("Driving from the opposite")
                     cw += 2.5 * v_cw
-                    ch += 2 * v_ch
+                    ch += 2.5 * v_ch
                     min_w = cw - 0.6 * (w + 2 * abs(v_cw))
                     max_w = cw + 0.6 * (w + 2 * abs(v_cw))
                     min_h = ch - 0.6 * (h + 2 * v_h)
@@ -380,6 +385,12 @@ class Track:
                     min_h = ch - 0.6 * h
                     max_w = cw + 0.6 * w
                     max_h = ch + 0.6 * h
+
+                    # deal with the left turn and right turn case
+                    if turn_flag == 'left_turn':
+                        max_w += max(0.2 * w, 50)
+                    elif turn_flag == 'right_turn':
+                        min_w -= max(0.2 * w, 50)
 
         min_w = int(max(min_w, 0))
         min_h = int(max(min_h, 0))
