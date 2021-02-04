@@ -292,6 +292,20 @@ class Track:
         v_cw, v_ch, v_w, v_h = self.mean[4:8]
         std_cw, std_ch, std_vw, std_vh = np.sqrt(np.diagonal(self.covariance)[0:4])
 
+        # limit the box coordinates
+        if args.dataset == 'waymo':
+            limit_w = 1920
+            limit_h = 1280
+        else:
+            limit_w = 1248
+            limit_h = 384
+
+        # print logs
+        print(self.track_id)
+        print('Mean cw, ch, w, h:', cw, ch, w, h)
+        print('Velocity cw, ch, w, h', v_cw, v_ch, v_w, v_h)
+        print()
+
         # filter out unqualified boxes
         flag = cw > 0 and ch > 0 and w > 0 and h > 0
         if not flag:
@@ -301,59 +315,65 @@ class Track:
         # one appearance, no object velocity information available; we can use optical flow to assist this situation
         if self.hits == 1 and args.scheduler != 'merged':
             # decide corner positions
-            min_w = cw - 0.6 * w
+            min_w = cw - 0.7 * w
             min_h = ch - 0.6 * h
-            max_w = cw + 0.6 * w
-            max_h = ch + 0.6 * h
-        else:
-            # # shift the center position when the moving speed is fast
-            # # enter from left
-            # if v_cw > 5:
-            #     cw += 3 * v_cw
-            #
-            # # enter from right
-            # if v_cw < -5:
-            #     cw -= 3 * abs(v_cw)
-            # #
-            # # move down
-            # if v_ch > 10:
-            #     ch += 3 * v_ch
-            #     cw -= 1.3 * abs(v_cw)
-
-            # decide corner positions
-            min_w = cw - 0.6 * w
-            min_h = ch - 0.6 * h
-            max_w = cw + 0.6 * w
+            max_w = cw + 0.7 * w
             max_h = ch + 0.6 * h
 
-            # if v_ch > 3:  # enlarge the box when moving down
-            #     max_h += max(0.2 * h, 3 * std_vh)
-            #     min_w -= max(0.2 * w, 3 * std_vw)
-            # elif v_cw > 5 and v_w > 5 and v_h < 3:  # enlarge the box when moving right
-            #     max_w += max(0.2 * w, 3 * std_vw)
-            #     min_w -= 0.1 * w
-            # elif v_cw < -5 and v_w > 5 and v_h < 3:  # enlarge the box when moving left
-            #     min_w -= max(0.2 * w, 3 * std_vw)
-            #     max_w = min(1920, max_w)
-            # else:
-            #     max_w += 0.1 * w
-            #     min_w -= 0.1 * w
-            #     max_h += 0.1 * h
-            #     min_h -= 0.1 * h
+            if min_w < 160:
+                min_w = 0
 
-        # limit the box coordinates
-        if args.dataset == 'waymo':
-            limit_w = 1920
-            limit_h = 1280
+            if max_h > limit_h - 160:
+                max_h = limit_h
         else:
-            limit_w = 1248
-            limit_h = 384
+            # enter from left
+            if v_cw > 5 and v_ch < 5 and v_w > 5 and cw + w < limit_w / 3:
+                cw += 2 * v_cw
+                min_w = cw - 0.6 * w
+                max_w = cw + 0.6 * (w + v_w)
+                min_h = ch - 0.6 * h
+                max_h = ch + 0.6 * h
+            # enter from right;
+            elif v_cw < -5 and v_ch < 5 and v_w > 5:
+                if cw - w > 2 * limit_w / 3:  # enter from right
+                    cw += 2 * v_cw
+                    max_w = cw + 0.5 * w
+                    min_w = cw - 0.6 * (w + v_w)
+                    min_h = ch - 0.6 * h
+                    max_h = ch + 0.6 * h
+                else:  # turn left at right hand side
+                    cw += v_cw
+                    max_w = cw + 0.6 * w
+                    min_w = cw - 0.6 * (w + 2 * abs(v_cw))
+                    min_h = ch - 0.6 * h
+                    max_h = ch + 0.6 * (h + v_h)
+
+            # driving from the opposite
+            elif v_cw < -10 and v_ch > 5:
+                cw += 2.5 * v_cw
+                ch += 2 * v_ch
+                min_w = cw - 0.6 * (w + 2 * abs(v_cw))
+                max_w = cw + 0.6 * (w + 2 * abs(v_cw))
+                min_h = ch - 0.6 * (h + 2 * v_h)
+                max_h = ch + 0.6 * (h + 2 * v_h)
+
+                if min_w < 160:
+                    min_w = 0
+
+                if max_h > limit_h - 160:
+                    max_h = limit_h
+            else:
+                # decide corner positions
+                min_w = cw - 0.6 * w
+                min_h = ch - 0.6 * h
+                max_w = cw + 0.6 * w
+                max_h = ch + 0.6 * h
 
         min_w = int(max(min_w, 0))
         min_h = int(max(min_h, 0))
         max_w = int(min(max_w, limit_w))
         max_h = int(min(max_h, limit_h))
-        print(self.track_id, [min_w, min_h, max_w, max_h])
+        # print(self.track_id, [min_w, min_h, max_w, max_h])
 
         # compute the Hamming distance for pHash
         if max_h - min_h > 32 and max_w - min_w > 32:
