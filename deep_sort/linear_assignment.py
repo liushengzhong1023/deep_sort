@@ -55,6 +55,14 @@ def min_cost_matching(distance_metric, max_distance, tracks, detections, track_i
     row_indices, col_indices = linear_assignment(cost_matrix)
     indices = np.vstack([row_indices, col_indices]).T
 
+    # print([e.tlwh for e in detections])
+    # print()
+    # print([e.to_tlwh() for e in tracks])
+    # print()
+    # print(cost_matrix)
+    # print()
+    # print(row_indices, col_indices)
+
     matches, unmatched_tracks, unmatched_detections = [], [], []
     for col, detection_idx in enumerate(detection_indices):
         if col not in indices[:, 1]:

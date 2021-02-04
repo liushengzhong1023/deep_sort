@@ -40,7 +40,7 @@ class Tracker:
 
     """
 
-    def __init__(self, metric, max_iou_distance=0.7, max_age=3, n_init=3):
+    def __init__(self, metric, max_iou_distance=1, max_age=2, n_init=3):
         self.metric = metric
         self.max_iou_distance = max_iou_distance
         self.max_age = max_age
@@ -59,7 +59,11 @@ class Tracker:
         This function should be called once every time step, before `update`.
         """
         for track in self.tracks:
+            print(track.track_id)
+            print("before projection:", track.to_tlwh())
             track.predict(self.kf)
+            print("after projection:", track.to_tlwh())
+            print()
 
     def _match(self, detections):
 
