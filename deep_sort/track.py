@@ -293,7 +293,7 @@ class Track:
         '''
         cw, ch, w, h = self.mean[0:4]
         v_cw, v_ch, v_w, v_h = self.mean[4:8]
-        std_cw, std_ch, std_vw, std_vh = np.sqrt(np.diagonal(self.covariance)[0:4])
+        # std_cw, std_ch, std_vw, std_vh = np.sqrt(np.diagonal(self.covariance)[0:4])
 
         # limit the box coordinates
         if args.dataset == 'waymo':
@@ -319,23 +319,28 @@ class Track:
 
         # process "small" human objects
         if (args.dataset == 'waymo' and self.obj_class == 2) or (args.dataset == 'kitti' and self.obj_class == 3):
+            h = max(h, 64)
             w = max(w, h, 64)
             min_w = cw - 0.6 * w
             min_h = ch - 0.6 * h
             max_w = cw + 0.6 * w
             max_h = ch + 0.6 * h
-        else:  # vehicle
+        else:  # vehicle class
             # avoid too flat bbox
             if h < w / 2:
-                h = w/2
+                h = w / 2
+
+            # avoid too small bboxes
+            w = max(w, 64)
+            h = max(h, 64)
 
             # one appearance, no object velocity information available
             if self.hits == 1 and args.scheduler != 'merged':
                 # decide corner positions
                 min_w = cw - 0.7 * w
-                min_h = ch - 0.6 * h
+                min_h = ch - 0.7 * h
                 max_w = cw + 0.7 * w
-                max_h = ch + 0.6 * h
+                max_h = ch + 0.7 * h
 
                 if min_w < 160:
                     min_w = 0
@@ -367,8 +372,8 @@ class Track:
                 # driving from the opposite and close to you
                 elif v_cw < -10 and v_ch > 5 and cw < limit_w / 2:
                     # print("Driving from the opposite")
-                    cw += 2.5 * v_cw
-                    ch += 2.5 * v_ch
+                    cw += 2 * v_cw
+                    ch += 2 * v_ch
                     min_w = cw - 0.6 * (w + 2 * abs(v_cw))
                     max_w = cw + 0.6 * (w + 2 * abs(v_cw))
                     min_h = ch - 0.6 * (h + 2 * v_h)
