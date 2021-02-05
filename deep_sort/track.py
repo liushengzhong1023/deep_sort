@@ -295,7 +295,19 @@ class Track:
         v_cw, v_ch, v_w, v_h = self.mean[4:8]
         # std_cw, std_ch, std_vw, std_vh = np.sqrt(np.diagonal(self.covariance)[0:4])
 
-        # limit the box coordinates
+        # initial estimate of future position and the phash difference (deviation from the expectation)
+        min_w = int(cw - w / 2)
+        max_w = int(cw + w / 2)
+        min_h = int(ch - h / 2)
+        max_h = int(ch + h / 2)
+        projected_image = args.preprocessed_image[min_h:max_h, min_w: max_w, :]
+        image_h, image_w, _ = np.shape(projected_image)
+        if image_h > 32 and image_w > 32:
+            self.hamming_distance = phash_distance(self.phash, projected_image)
+        else:
+            self.hamming_distance = 0
+
+        # box coordinate limits
         if args.dataset == 'waymo':
             limit_w = 1920
             limit_h = 1280
@@ -305,19 +317,18 @@ class Track:
 
         # print logs
         if args.segment is not None:
-            print(self.track_id, self.obj_class)
+            print(self.track_id, self.obj_class, self.hamming_distance)
             print('Mean cw, ch, w, h:', cw, ch, w, h)
             print('Velocity cw, ch, w, h', v_cw, v_ch, v_w, v_h)
             # print('Mean std: ', std_cw, std_ch, std_vw, std_vh)
-            print()
 
-        # filter out unqualified boxes
-        flag = cw > 0 and ch > 0 and w > 0 and h > 0
-        if not flag:
-            self.mark_deleted()
-            return [0, 0, 0, 0]
+        # # filter out unqualified boxes
+        # flag = cw > 0 and ch > 0 and w > 0 and h > 0
+        # if not flag:
+        #     self.mark_deleted()
+        #     return [0, 0, 0, 0]
 
-        # process "small" human objects
+        # process human objects
         if (args.dataset == 'waymo' and self.obj_class == 2) or (args.dataset == 'kitti' and self.obj_class == 3):
             h = max(h, 64)
             w = max(w, h, 64)
@@ -326,13 +337,13 @@ class Track:
             max_w = cw + 0.6 * w
             max_h = ch + 0.6 * h
         else:  # vehicle class
-            # avoid too flat bbox
-            if h < w / 2:
-                h = w / 2
-
             # avoid too small bboxes
             w = max(w, 64)
             h = max(h, 64)
+
+            # avoid too flat bbox
+            if h < w / 2:
+                h = w / 2
 
             # one appearance, no object velocity information available
             if self.hits == 1 and args.scheduler != 'merged':
@@ -342,71 +353,88 @@ class Track:
                 max_w = cw + 0.7 * w
                 max_h = ch + 0.7 * h
 
-                if min_w < 160:
-                    min_w = 0
+                # enter from left for the first appearance
+                if min_w <= 20 and ch < 3 * limit_h / 4:
+                    max_w += 0.5 * w
 
-                if max_h > limit_h - 160:
-                    max_h = limit_h
+                # enter from right for the first appearance
+                if max_w >= limit_w - 20 and ch < 3 * limit_h / 4:
+                    min_w -= 0.4 * w
+
             else:
-                # enter from left, under no turn
-                if v_cw > 5 and v_ch < 5 and v_w > 5 and cw + w < limit_w / 3 and turn_flag is None:
-                    cw += 2 * v_cw
-                    min_w = cw - 0.6 * w
-                    max_w = cw + 0.6 * (w + v_w)
+                # AV left turn
+                if turn_flag == 'left':
+                    min_w = cw - 0.7 * w
                     min_h = ch - 0.6 * h
+                    max_w = cw + 0.7 * w
                     max_h = ch + 0.6 * h
-                # enter from right, under no turn
-                elif v_cw < -5 and v_ch < 5 and v_w > 5 and turn_flag is None:
-                    if cw - w > 2 * limit_w / 3:  # enter from right
-                        cw += 2 * v_cw
-                        max_w = cw + 0.5 * w
-                        min_w = cw - 0.6 * (w + v_w)
-                        min_h = ch - 0.6 * h
-                        max_h = ch + 0.6 * h
-                    else:  # turn left at right hand side
-                        cw += v_cw
-                        max_w = cw + 0.6 * w
-                        min_w = cw - 0.6 * (w + 2 * abs(v_cw))
-                        min_h = ch - 0.6 * h
-                        max_h = ch + 0.6 * (h + v_h)
-                # driving from the opposite and close to you
+
+                    # everything moves to right
+                    max_w += max(0.2 * w, 50)
+                # AV right turn
+                elif turn_flag == 'right':
+                    min_w = cw - 0.7 * w
+                    min_h = ch - 0.6 * h
+                    max_w = cw + 0.7 * w
+                    max_h = ch + 0.6 * h
+
+                    # everything moves to left
+                    min_w -= max(0.2 * w, 50)
+                # enter from left, left 1/3 position, under no turn, closer to the AV
+                elif v_cw > 5 and v_ch < 5 and v_w > 5 and v_h > 0 and cw + w / 2 < limit_w / 3:
+                    cw += 3 * v_cw
+                    min_w = cw - 0.6 * (w + 1 * v_cw + 2 * v_w)
+                    max_w = cw + 0.6 * (w + 2 * v_cw + 4 * v_w)
+                    min_h = ch - 0.6 * (h + abs(v_h))
+                    max_h = ch + 0.6 * (h + abs(v_h))
+                # enter from right, right 1/3 position, under no turn, further to the AV
+                elif v_cw < -5 and v_ch < 5 and v_w > 5 and v_h > 0 and cw - w / 2 > 2 * limit_w / 3:
+                    cw += 1.5 * v_cw
+                    max_w = cw + 0.6 * (w + 1 * abs(v_cw) + 1 * v_w)
+                    min_w = cw - 0.6 * (w + 2 * abs(v_cw) + 4 * v_w)
+                    min_h = ch - 0.6 * (h + abs(v_h))
+                    max_h = ch + 0.6 * (h + abs(v_h))
+                # left turn at right hand side, left 1/2 position
+                elif v_cw < -5 and v_ch < 5 and v_w > 5 and cw < limit_w / 2:
+                    cw += v_cw
+                    max_w = cw + 0.6 * (w + 1 * abs(v_cw))
+                    min_w = cw - 0.6 * (w + 2 * abs(v_cw) + 2 * abs(v_w))
+                    min_h = ch - 0.6 * (h + abs(v_h))
+                    max_h = ch + 0.6 * (h + abs(v_h))
+                # driving from the opposite and be close to you
                 elif v_cw < -10 and v_ch > 5 and cw < limit_w / 2:
-                    # print("Driving from the opposite")
                     cw += 2 * v_cw
                     ch += 2 * v_ch
-                    min_w = cw - 0.6 * (w + 2 * abs(v_cw))
-                    max_w = cw + 0.6 * (w + 2 * abs(v_cw))
-                    min_h = ch - 0.6 * (h + 2 * v_h)
-                    max_h = ch + 0.6 * (h + 2 * v_h)
+                    min_w = cw - 0.6 * (w + 2 * abs(v_cw) + 2 * abs(v_w))
+                    max_w = cw + 0.6 * (w + 2 * abs(v_cw) + 2 * abs(v_w))
+                    min_h = ch - 0.6 * (h + 2 * abs(v_ch) + 2 * abs(v_h))
+                    max_h = ch + 0.6 * (h + 2 * abs(v_ch) + 3 * abs(v_h))
 
                     if min_w < 160:
                         min_w = 0
 
                     if max_h > limit_h - 160:
                         max_h = limit_h
+                # driving from the opposite and be relatively far from you
+                elif v_cw < -5 and v_ch > 2 and cw < limit_w / 2:
+                    cw += v_cw
+                    ch += v_ch
+                    min_w = cw - 0.6 * (w + 2 * abs(v_cw) + 0 * abs(v_w))
+                    max_w = cw + 0.6 * (w + 2 * abs(v_cw) + 0 * abs(v_w))
+                    min_h = ch - 0.6 * (h + 2 * abs(v_ch) + 0 * abs(v_h))
+                    max_h = ch + 0.6 * (h + 2 * abs(v_ch) + 0 * abs(v_h))
                 else:
                     # decide corner positions
                     min_w = cw - 0.6 * w
                     min_h = ch - 0.6 * h
                     max_w = cw + 0.6 * w
                     max_h = ch + 0.6 * h
-
-                    # deal with the left turn and right turn case
-                    if turn_flag == 'left_turn':
-                        max_w += max(0.2 * w, 50)
-                    elif turn_flag == 'right_turn':
-                        min_w -= max(0.2 * w, 50)
-
+        if args.segment is not None:
+            print()
         min_w = int(max(min_w, 0))
         min_h = int(max(min_h, 0))
         max_w = int(min(max_w, limit_w))
         max_h = int(min(max_h, limit_h))
         # print(self.track_id, [min_w, min_h, max_w, max_h])
-
-        # compute the Hamming distance for pHash
-        if max_h - min_h > 32 and max_w - min_w > 32:
-            self.hamming_distance = phash_distance(self.phash, args.preprocessed_image[min_h:max_h, min_w: max_w, :])
-        else:
-            self.hamming_distance = 0
 
         return min_w, min_h, max_w, max_h
