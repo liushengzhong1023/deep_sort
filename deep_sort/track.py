@@ -353,17 +353,25 @@ class Track:
                 max_w = cw + 0.7 * w
                 max_h = ch + 0.7 * h
 
+                if turn_flag == 'left_turn':
+                    max_w += max(0.2 * w, 50)
+                elif turn_flag == 'right_turn':
+                    min_w -= max(0.2 * w, 50)
                 # enter from left for the first appearance
-                if min_w <= 20 and ch < 3 * limit_h / 4:
+                if min_w <= 20 and ch + h / 2 < 3 * limit_h / 4:
                     max_w += 0.5 * w
-
                 # enter from right for the first appearance
-                if max_w >= limit_w - 20 and ch < 3 * limit_h / 4:
+                elif max_w >= limit_w - 20 and ch + h / 2 < 3 * limit_h / 4:
                     min_w -= 0.4 * w
-
+                # driving from the opposite for the first appearance
+                elif cw < limit_w / 3 and ch > limit_h / 2:
+                    min_w -= 0.3 * w
+                    max_h += 0.2 * h
             else:
                 # AV left turn
-                if turn_flag == 'left':
+                if turn_flag == 'left_turn':
+                    if args.segment is not None:
+                        print("left turn")
                     min_w = cw - 0.7 * w
                     min_h = ch - 0.6 * h
                     max_w = cw + 0.7 * w
@@ -372,7 +380,9 @@ class Track:
                     # everything moves to right
                     max_w += max(0.2 * w, 50)
                 # AV right turn
-                elif turn_flag == 'right':
+                elif turn_flag == 'right_turn':
+                    if args.segment is not None:
+                        print("right turn")
                     min_w = cw - 0.7 * w
                     min_h = ch - 0.6 * h
                     max_w = cw + 0.7 * w
@@ -381,54 +391,52 @@ class Track:
                     # everything moves to left
                     min_w -= max(0.2 * w, 50)
                 # enter from left, left 1/3 position, under no turn, closer to the AV
-                elif v_cw > 5 and v_ch < 5 and v_w > 5 and v_h > 0 and cw + w / 2 < limit_w / 3:
+                elif v_cw > 5 and abs(v_ch) < 5 and v_w > 5 and v_h > 0 and cw - w / 2 < 30:
                     cw += 3 * v_cw
                     min_w = cw - 0.6 * (w + 1 * v_cw + 2 * v_w)
                     max_w = cw + 0.6 * (w + 2 * v_cw + 4 * v_w)
                     min_h = ch - 0.6 * (h + abs(v_h))
                     max_h = ch + 0.6 * (h + abs(v_h))
                 # enter from right, right 1/3 position, under no turn, further to the AV
-                elif v_cw < -5 and v_ch < 5 and v_w > 5 and v_h > 0 and cw - w / 2 > 2 * limit_w / 3:
+                elif v_cw < -5 and abs(v_ch) < 5 and v_w > 5 and v_h > 0 and cw + w / 2 > limit_w - 30:
                     cw += 1.5 * v_cw
                     max_w = cw + 0.6 * (w + 1 * abs(v_cw) + 1 * v_w)
                     min_w = cw - 0.6 * (w + 2 * abs(v_cw) + 4 * v_w)
                     min_h = ch - 0.6 * (h + abs(v_h))
                     max_h = ch + 0.6 * (h + abs(v_h))
-                # left turn at right hand side, left 1/2 position
-                elif v_cw < -5 and v_ch < 5 and v_w > 5 and cw < limit_w / 2:
-                    cw += v_cw
-                    max_w = cw + 0.6 * (w + 1 * abs(v_cw))
-                    min_w = cw - 0.6 * (w + 2 * abs(v_cw) + 2 * abs(v_w))
-                    min_h = ch - 0.6 * (h + abs(v_h))
-                    max_h = ch + 0.6 * (h + abs(v_h))
-                # driving from the opposite and be close to you
-                elif v_cw < -10 and v_ch > 5 and cw < limit_w / 2:
-                    cw += 2 * v_cw
-                    ch += 2 * v_ch
-                    min_w = cw - 0.6 * (w + 2 * abs(v_cw) + 2 * abs(v_w))
+                # driving from the opposite and be relatively far from you
+                elif v_cw < -5 and v_ch > 1 and cw < limit_w / 2:
+                    cw += 1.5 * v_cw
+                    ch += 1.5 * v_ch
+                    min_w = cw - 0.6 * (w + 4 * abs(v_cw) + 4 * abs(v_w))
                     max_w = cw + 0.6 * (w + 2 * abs(v_cw) + 2 * abs(v_w))
-                    min_h = ch - 0.6 * (h + 2 * abs(v_ch) + 2 * abs(v_h))
-                    max_h = ch + 0.6 * (h + 2 * abs(v_ch) + 3 * abs(v_h))
+                    min_h = ch - 0.6 * (h + 2 * abs(v_ch) + 0 * abs(v_h))
+                    max_h = ch + 0.6 * (h + 4 * abs(v_ch) + 4 * abs(v_h))
 
                     if min_w < 160:
                         min_w = 0
 
                     if max_h > limit_h - 160:
                         max_h = limit_h
-                # driving from the opposite and be relatively far from you
-                elif v_cw < -5 and v_ch > 2 and cw < limit_w / 2:
-                    cw += v_cw
-                    ch += v_ch
-                    min_w = cw - 0.6 * (w + 2 * abs(v_cw) + 0 * abs(v_w))
-                    max_w = cw + 0.6 * (w + 2 * abs(v_cw) + 0 * abs(v_w))
-                    min_h = ch - 0.6 * (h + 2 * abs(v_ch) + 0 * abs(v_h))
-                    max_h = ch + 0.6 * (h + 2 * abs(v_ch) + 0 * abs(v_h))
                 else:
                     # decide corner positions
                     min_w = cw - 0.6 * w
                     min_h = ch - 0.6 * h
                     max_w = cw + 0.6 * w
                     max_h = ch + 0.6 * h
+
+                    # pass other objects, closer --> larger, moving left
+                    if min_w < 160 and v_cw < 0:
+                        min_w = 0
+
+                    # moving right
+                    if max_w > limit_w - 160 and v_cw > 0:
+                        max_w = limit_w
+
+                    # moving down
+                    if max_h > limit_h - 160 and v_ch > 0:
+                        max_h = limit_h
+
         if args.segment is not None:
             print()
         min_w = int(max(min_w, 0))
