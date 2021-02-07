@@ -282,7 +282,7 @@ class Track:
 
         return min_w, min_h, max_w, max_h
 
-    def project_next_data_region_v2(self, args, turn_flag=None, bg_shift=None):
+    def project_next_data_region_v2(self, args, turn_flag=None, bg_shift=None, return_phash=False):
         '''
         Use projected state to generate a data region for next appearance.
         Goal: we want to cover the next appearance of the object.
@@ -375,6 +375,9 @@ class Track:
                     min_h = ch - 0.6 * h
                     max_w = cw + 0.7 * w + max(0.2 * w, 50, bg_shift)
                     max_h = ch + 0.6 * h
+
+                    if v_ch > 2:
+                        min_w -= max(0.2 * w, 50, bg_shift)
                 # AV right turn
                 elif turn_flag == 'right_turn':
                     if args.segment is not None:
@@ -402,7 +405,7 @@ class Track:
                     cw += 1.5 * v_cw
                     ch += 1.5 * v_ch
                     min_w = cw - 0.6 * (w + 4 * abs(v_cw) + 4 * abs(v_w))
-                    max_w = cw + 0.6 * (w + 2 * abs(v_cw) + 2 * abs(v_w))
+                    max_w = cw + 0.6 * (w + 3 * abs(v_cw) + 2 * abs(v_w))
                     min_h = ch - 0.6 * (h + 2 * abs(v_ch) + 0 * abs(v_h))
                     max_h = ch + 0.6 * (h + 4 * abs(v_ch) + 4 * abs(v_h))
 
@@ -445,6 +448,8 @@ class Track:
         min_h = int(max(min_h, 0))
         max_w = int(min(max_w, limit_w))
         max_h = int(min(max_h, limit_h))
-        # print(self.track_id, [min_w, min_h, max_w, max_h])
 
-        return min_w, min_h, max_w, max_h
+        if return_phash:
+            return [min_w, min_h, max_w, max_h], self.hamming_distance
+        else:
+            return min_w, min_h, max_w, max_h
