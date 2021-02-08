@@ -316,11 +316,11 @@ class Track:
             limit_h = 384
 
         # print logs
-        if args.segment is not None:
-            print(self.track_id, self.obj_class, self.hamming_distance)
-            print('Mean cw, ch, w, h:', cw, ch, w, h)
-            print('Velocity cw, ch, w, h', v_cw, v_ch, v_w, v_h)
-            # print('Mean std: ', std_cw, std_ch, std_vw, std_vh)
+        # if args.segment is not None:
+        #     print(self.track_id, self.obj_class, self.hamming_distance)
+        #     print('Mean cw, ch, w, h:', cw, ch, w, h)
+        #     print('Velocity cw, ch, w, h', v_cw, v_ch, v_w, v_h)
+        #     # print('Mean std: ', std_cw, std_ch, std_vw, std_vh)
 
         # process human objects
         if (args.dataset == 'waymo' and self.obj_class == 2) or (args.dataset == 'kitti' and self.obj_class == 3):
@@ -441,8 +441,8 @@ class Track:
                     if max_h > limit_h - 160 and v_ch > 0:
                         max_h = limit_h
 
-        if args.segment is not None:
-            print()
+        # if args.segment is not None:
+        #     print()
 
         min_w = int(max(min_w, 0))
         min_h = int(max(min_h, 0))
