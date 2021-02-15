@@ -446,3 +446,45 @@ class Track:
             return [min_w, min_h, max_w, max_h], self.hamming_distance
         else:
             return min_w, min_h, max_w, max_h
+
+    def fake_detect(self, args):
+        '''
+        We use the predicted object location as the fake detection.
+        We also need to handle the object age here to make sure it is not deleted too early.
+        bbox: [min_w, min_h, max_w, max_h, objectness, class, class_conf]
+        '''
+        cw, ch, w, h = self.mean[0:4]
+
+        # get bbox location
+        min_w = cw - w / 2
+        max_w = cw + w / 2
+        min_h = ch - h / 2
+        max_h = ch + h / 2
+
+        # limit the box coordinates
+        if args.dataset == 'waymo':
+            limit_w = 1920
+            limit_h = 1280
+        else:
+            limit_w = 1248
+            limit_h = 384
+
+        min_w = int(max(min_w, 0))
+        min_h = int(max(min_h, 0))
+        max_w = int(min(max_w, limit_w))
+        max_h = int(min(max_h, limit_h))
+
+        # check bbox coordinates and delete the unqualified track directly
+        if max_w - min_w <= 0 or max_h - min_h <= 0:
+            self.mark_deleted()
+            return []
+
+        # use the same class and fake confidence
+        objectness = 1
+        predicted_class = self.obj_class
+        cls_conf = 1
+
+        # update the object age
+        self.time_since_update -= 1
+
+        return [min_w, min_h, max_w, max_h, objectness, predicted_class, cls_conf]
