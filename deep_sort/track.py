@@ -94,6 +94,9 @@ class Track:
         # object class
         self.obj_class = obj_class
 
+        # save the times for fake detections
+        self.fake_detection_times = 0
+
     def to_tlwh(self):
         """Get current position in bounding box format `(top left x, top left y,
         width, height)`.
@@ -302,10 +305,15 @@ class Track:
         max_h = int(ch + h / 2)
         projected_image = args.preprocessed_image[min_h:max_h, min_w: max_w, :]
         image_h, image_w, _ = np.shape(projected_image)
-        if image_h > 32 and image_w > 32:
-            self.hamming_distance = phash_distance(self.phash, projected_image)
+
+        # decide the criticality to use
+        if args.criticality == 'phash':
+            if image_h > 32 and image_w > 32:
+                self.hamming_distance = phash_distance(self.phash, projected_image)
+            else:
+                self.hamming_distance = 0
         else:
-            self.hamming_distance = 0
+            self.hamming_distance = np.random.randint(0, 64)
 
         # box coordinate limits
         if args.dataset == 'waymo':
@@ -486,5 +494,9 @@ class Track:
 
         # update the object age
         self.time_since_update -= 1
+        self.fake_detection_times += 1
+
+        # if self.fake_detection_times >= 2:
+        #     self.mark_deleted()
 
         return [min_w, min_h, max_w, max_h, objectness, predicted_class, cls_conf]
