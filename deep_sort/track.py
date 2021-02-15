@@ -315,13 +315,6 @@ class Track:
             limit_w = 1248
             limit_h = 384
 
-        # print logs
-        # if args.segment is not None:
-        #     print(self.track_id, self.obj_class, self.hamming_distance)
-        #     print('Mean cw, ch, w, h:', cw, ch, w, h)
-        #     print('Velocity cw, ch, w, h', v_cw, v_ch, v_w, v_h)
-        #     # print('Mean std: ', std_cw, std_ch, std_vw, std_vh)
-
         # process human objects
         if (args.dataset == 'waymo' and self.obj_class == 2) or (args.dataset == 'kitti' and self.obj_class == 3):
             h = max(h, 64)
@@ -372,9 +365,9 @@ class Track:
                     if args.segment is not None:
                         print("left turn")
                     min_w = cw - 0.7 * w
-                    min_h = ch - 0.6 * h
+                    min_h = ch - 0.7 * h
                     max_w = cw + 0.7 * w + max(0.2 * w, 50, bg_shift)
-                    max_h = ch + 0.6 * h
+                    max_h = ch + 0.7 * h
 
                     if v_ch > 2:
                         min_w -= max(0.2 * w, 50, bg_shift)
@@ -383,9 +376,9 @@ class Track:
                     if args.segment is not None:
                         print("right turn")
                     min_w = cw - 0.7 * w - max(0.2 * w, 50, bg_shift)
-                    min_h = ch - 0.6 * h
+                    min_h = ch - 0.7 * h
                     max_w = cw + 0.7 * w
-                    max_h = ch + 0.6 * h
+                    max_h = ch + 0.7 * h
                 # enter from left, under no turn, closer to the AV
                 elif v_cw > 5 and abs(v_ch) < 5 and v_w > 5 and v_h > 0 and cw - w / 2 < 30:
                     cw += 3 * v_cw
@@ -416,10 +409,10 @@ class Track:
                         max_h = limit_h
                 else:
                     # decide corner positions
-                    min_w = cw - 0.6 * w
-                    min_h = ch - 0.6 * h
-                    max_w = cw + 0.6 * w
-                    max_h = ch + 0.6 * h
+                    min_w = cw - 0.7 * w
+                    min_h = ch - 0.7 * h
+                    max_w = cw + 0.7 * w
+                    max_h = ch + 0.7 * h
 
                     # moving very fast to the right and the tracker is too slow (the flow slicer fails)
                     if v_cw > 10:
