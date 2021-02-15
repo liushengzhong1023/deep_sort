@@ -212,7 +212,7 @@ class Track:
             return [0, 0, 0, 0]
 
         # one appearance, no object velocity information available
-        if self.hits == 1 and args.scheduler != 'merged':
+        if self.hits == 1:
             w = max(1.3 * w, 96)
             h = max(1.3 * h, 64)
 
@@ -338,7 +338,7 @@ class Track:
                 h = w / 2
 
             # one appearance, no object velocity information available
-            if self.hits == 1 and args.scheduler != 'merged':
+            if self.hits == 1:
                 # decide corner positions
                 min_w = cw - 0.7 * w
                 min_h = ch - 0.7 * h
