@@ -293,10 +293,15 @@ class Track:
         We guarantee that each box is a valid box on the full image.
         TODO: The moving speed is 0 after identifying only one appearance;
               so the predicted box position is same as previous appearance.
+              This result is tuned on Waymo dataset; need to be tuned on Kitti dataset as well.
         '''
         cw, ch, w, h = self.mean[0:4]
         v_cw, v_ch, v_w, v_h = self.mean[4:8]
-        # std_cw, std_ch, std_vw, std_vh = np.sqrt(np.diagonal(self.covariance)[0:4])
+
+        # print(self.track_id)
+        # print(cw, ch, w, h)
+        # print(v_cw, v_ch, v_w, v_h)
+        # print()
 
         # initial estimate of future position and the phash difference (deviation from the expectation)
         min_w = int(cw - w / 2)
@@ -319,9 +324,13 @@ class Track:
         if args.dataset == 'waymo':
             limit_w = 1920
             limit_h = 1280
+            w_margin = 160
+            h_margin = 160
         else:
             limit_w = 1248
             limit_h = 384
+            w_margin = 120
+            h_margin = 64
 
         # process human objects
         if (args.dataset == 'waymo' and self.obj_class == 2) or (args.dataset == 'kitti' and self.obj_class == 3):
@@ -402,7 +411,8 @@ class Track:
                     min_h = ch - 0.7 * (h + abs(v_ch) + abs(v_h))
                     max_h = ch + 0.6 * (h + abs(v_ch) + abs(v_h))
                 # driving from the opposite
-                elif v_cw < -5 and v_ch > 1 and cw < limit_w / 2:
+                elif (v_cw < -5 and v_ch > 1 and cw < limit_w / 2 and args.dataset == 'waymo') or \
+                    (v_cw < -3 and v_w > 3 and cw < limit_w / 2 and args.dataset == 'kitti'):
                     cw += 1.5 * v_cw
                     ch += 1.5 * v_ch
                     min_w = cw - 0.6 * (w + 4 * abs(v_cw) + 4 * abs(v_w))
@@ -410,10 +420,10 @@ class Track:
                     min_h = ch - 0.6 * (h + 2 * abs(v_ch) + 0 * abs(v_h))
                     max_h = ch + 0.6 * (h + 4 * abs(v_ch) + 4 * abs(v_h))
 
-                    if min_w < 160:
+                    if min_w < w_margin:
                         min_w = 0
 
-                    if max_h > limit_h - 160:
+                    if max_h > limit_h - h_margin:
                         max_h = limit_h
                 else:
                     # decide corner positions
@@ -431,15 +441,15 @@ class Track:
                         min_w -= abs(v_cw) * 2
 
                     # pass other objects, closer --> larger, moving left
-                    if min_w < 160 and v_cw < 0:
+                    if min_w < w_margin and v_cw < 0:
                         min_w = 0
 
                     # pass other objects at right
-                    if max_w > limit_w - 160 and v_cw > 0:
+                    if max_w > limit_w - w_margin and v_cw > 0:
                         max_w = limit_w
 
                     # moving down
-                    if max_h > limit_h - 160 and v_ch > 0:
+                    if max_h > limit_h - h_margin and v_ch > 0:
                         max_h = limit_h
 
         # if args.segment is not None:
