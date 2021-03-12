@@ -266,11 +266,11 @@ class Track:
 
         # limit the box coordinates
         if args.dataset == 'waymo':
-            limit_w = 1920
-            limit_h = 1280
+            limit_w = args.limit_w
+            limit_h = args.limit_h
         else:
-            limit_w = 1248
-            limit_h = 384
+            limit_w = args.limit_w
+            limit_h = args.limit_h
 
         min_w = int(max(min_w, 0))
         min_h = int(max(min_h, 0))
@@ -322,13 +322,13 @@ class Track:
 
         # box coordinate limits
         if args.dataset == 'waymo':
-            limit_w = 1920
-            limit_h = 1280
+            limit_w = args.limit_w
+            limit_h = args.limit_h
             w_margin = 160
             h_margin = 160
         else:
-            limit_w = 1248
-            limit_h = 384
+            limit_w = args.limit_w
+            limit_h = args.limit_h
             w_margin = 120
             h_margin = 64
 
@@ -481,11 +481,11 @@ class Track:
 
         # limit the box coordinates
         if args.dataset == 'waymo':
-            limit_w = 1920
-            limit_h = 1280
+            limit_w = args.limit_w
+            limit_h = args.limit_h
         else:
-            limit_w = 1248
-            limit_h = 384
+            limit_w = args.limit_w
+            limit_h = args.limit_h
 
         min_w = int(max(min_w, 0))
         min_h = int(max(min_h, 0))
